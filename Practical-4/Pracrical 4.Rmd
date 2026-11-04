@@ -1,0 +1,138 @@
+---
+title: "Practical 4"
+output: html_document
+date: "2026-11-04"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Load Packages
+library(sf)
+library(dplyr)
+library(countrycode)
+library(tmap)
+```
+
+```{r}
+# Read Data
+gii <- read.csv(
+  "HDR25_Composite_indices_complete_time_series.csv",
+  fileEncoding = "Latin1")
+
+world <- st_read(
+  "World_Countries_(Generalized)_2173680399808997149.geojson")
+```
+```{r, include=FALSE}
+names(gii)
+names(world)
+
+dim(gii)
+dim(world)
+```
+
+```{r, include=FALSE}
+gii2 <- gii %>%
+  select(iso3, country, gii_2010, gii_2019)
+
+gii2 <- gii2 %>%
+  mutate(
+    gii_diff = gii_2019 - gii_2010
+  )
+
+gii2 <- gii2 %>%
+  mutate(
+    ISO = countrycode(
+      iso3,
+      origin = "iso3c",
+      destination = "iso2c"
+    )
+  )
+```
+```{r}
+world_gii <- world %>%
+  left_join(gii2, by = "ISO")
+
+head(world_gii)
+sum(is.na(world_gii$gii_diff))
+```
+
+```{r, include=FALSE}
+world_gii %>%
+  st_drop_geometry() %>%
+  summarise(
+    total = n(),
+    unmatched = sum(is.na(iso3)),
+    missing_gii = sum(!is.na(iso3) & is.na(gii_diff)),
+    valid = sum(!is.na(gii_diff))
+  )
+```
+```{r, include=FALSE}
+world_gii %>%
+  st_drop_geometry() %>%
+  filter(is.na(gii_diff)) %>%
+  select(COUNTRY, ISO, iso3, gii_2010, gii_2019)
+```
+
+```{r}
+world_gii %>%
+  st_drop_geometry() %>%
+  arrange(gii_diff) %>%
+  select(COUNTRY, gii_2010, gii_2019, gii_diff) %>%
+head(10)
+
+summary(world_gii$gii_diff)
+```
+
+```{r}
+tmap_mode("plot")
+
+gii_map <- tm_shape(world_gii) +
+  tm_polygons(
+    fill = "gii_diff",
+    fill.scale = tm_scale_intervals(
+      breaks = c(-0.6, -0.2, -0.1, -0.05, 0, 0.1, 0.3),
+      values = "-RdBu",
+      value.na = "grey85"
+    ),
+    fill.legend = tm_legend(
+      title = "GII Change"
+    ),
+    col = "grey60",
+    lwd = 0.3
+  ) +
+  tm_title(
+    "Global Gender Inequality Change (2010–2019)",
+    position = tm_pos_out("center", "top")
+  ) +
+  tm_layout(
+    frame = FALSE,
+    bg.color = "white"
+  )
+
+gii_map
+```
+
+```{r, include=FALSE}
+library(sf)
+library(dplyr)
+
+# Select required columns
+world_gii_final <- world_gii %>%
+  select(COUNTRY, ISO, gii_2010, gii_2019, gii_diff)
+
+# Check column names
+names(world_gii_final)
+
+# Check duplicate names
+anyDuplicated(names(world_gii_final))
+
+# Export GeoJSON with a new filename
+st_write(
+  world_gii_final,
+  "Global_GII_Change_Final.geojson",
+  delete_dsn = TRUE
+)
+```
